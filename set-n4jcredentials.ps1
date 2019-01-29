@@ -1,26 +1,31 @@
 <# 
 .SYNOPSIS 
- Configure Neo4J database and credentials and securely store them in the registry.
+ Configure Neo4J database and credentials and (secure-string) store them in the registry.
  
 .DESCRIPTION 
  This script must be run as the account that will be used to run tasks that connect and query
- the neo4j database. The password is hashed and stored in the registry, and only retreivable by
- the same (user) account. Assuming the dotnet neo4j driver is already installed.
+ the neo4j database. The password is converted into a securestring object and stored in the registry, and only
+ retreivable by the same (user) account. We are assuming the dotnet neo4j driver is already installed.
 
  Thanks to Glenn Sarti for the primer article: https://glennsarti.github.io/blog/using-neo4j-dotnet-client-in-ps/ 
- and thanks to the Neo4j community for fielding all my silly questions!
+ and thanks to the Neo4j community!
  
+  ***Please be aware, securestring storage is only as secure as the machine and users operating
+ (or with access to) it. If you have access to the scripts, and some level of local administrative privilleges,
+ it is a trivial task to alter the scripts in order to recover/retrieve the original text of the stored
+ securestring values.  As best security practices demand, these stored credentials should only provide the least
+ privillege required to accomplish the task.
+
+ Any processes that store/retrieve these values should ONLY be stored and run on a secured and limited-access
+ endpoint, with a secured service account.
  
  
 .NOTES 
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐ 
-│ config-neo4j.ps1                                                                            │ 
+│ set-neo4jcredentials.ps1                                                                    │ 
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤ 
-│   DATE        : 2018.12.02																  │ 
+│   DATE        : 1.26.2019												     				  │ 
 │   AUTHOR      : Paul Drangeid 															  │ 
-│   DESCRIPTION : Draft version.  I wrote this to use in combination with other scripts.      │ 
-│                 Use this wrapper to assist in creating/storing neo4j credentials for later  │ 
-│                 secure retrieval for use in automated scripts/processes.                    │ 
 └─────────────────────────────────────────────────────────────────────────────────────────────┘ 
  
 #> 
