@@ -245,8 +245,16 @@ catch {
   }# End ForEach-Object $result.PSObject.Properties
   #If we have error messages, cleanup the text in the string (remove invalid characters) so we don't honk-up our logentry syntax
   if (![string]::IsNullOrEmpty($errormsg)) {
-      $errtxt=$($errormsg -replace '[^a-zA-Z0-9" _,/.:)(=\\\%-]', '')
-      #$errtxt=$($errormsg -replace '\\', '\\\\')
+
+    $errtxt=$($errormsg -replace '[^a-zA-Z0-9" _,/.:)(=\\\%-]', '')
+    $ms1=$($MyInvocation.MyCommand.Definition)
+    $matchstring = -join("*At ",$ms1,"*")
+#    $matchstring = $matchstring.replace('\','\\')
+    write-host "Matchstring: "$matchstring
+    if ($errtxt -like $matchstring) {
+        $errtxt =  $($errtxt -split 'At ')[0]
+    }
+  }
       write-host "[Error text start]"$errtxt"[Error text stop]" -ForegroundColor Yellow
     $logentry=-join($logentry,"cle.error='",$errtxt,"',")
     write-host "`nLogging error: `n$logentry `n For Transaction:$securetransaction`n" -ForegroundColor Yellow
