@@ -25,7 +25,7 @@
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐ 
 │ get-cypher-results.ps1                                                                      │ 
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤ 
-│   DATE        : 1.25.2019                              									  │ 
+│   DATE        : 1.28.2019                              									  │ 
 │   AUTHOR      : Paul Drangeid 	                           								  │ 
 │   SITE        : https://blog.graphcommit.com/                                               │ 
 └─────────────────────────────────────────────────────────────────────────────────────────────┘ 
@@ -73,15 +73,12 @@ Catch{
     }
 
  Prepare-EventLog
- #LogError "this is the actual error" "And here's some details to help provide context for the errors."
  
  if(![System.IO.File]::Exists($cypherscript)){
     Write-Host "Was unable to access the cypher script '$cypherscript'"
     BREAK
 }
  $cyphercontent = [IO.File]::ReadAllText($cypherscript)
-  
- #$TotalLinesInFile = $($cyphercontent | Measure-Object -Line).Lines
  
  $Path = "HKCU:\Software\neo4j-wrapper\Datasource\$Datasource"
  $Neo4jServerName = Ver-RegistryValue -RegPath $Path -Name "ServerURL"
@@ -101,6 +98,8 @@ Catch{
   BREAK
   }
   
+  # Collect any supplied -creds# and store them in a hashtable so we can use find/replace on the transactions to replace placeholders with actual
+  # credential information
   $Securecredentials=@{}
     for ($i=1; $i -le 4; $i++){
       $creds=$(Get-Variable -Name "creds$i" -ValueOnly)
@@ -109,8 +108,6 @@ Catch{
   $Matchstring = Ver-RegistryValue -RegPath $Path -Name "Matchstring"
   $SecureString = Get-SecurePassword $Path "SecureStringValue"
   $Securecredentials.Add($Matchstring,$SecureString)
-  #Write-Host "$Matchstring $SecureString"
-  #$cyphercontent=$($cyphercontent -replace $Matchstring,$SecureString)
   }}
 
   if (![string]::IsNullOrEmpty($logging)) {
@@ -129,15 +126,14 @@ Catch{
             LogError $_.Exception "Loading Neo4j driver." "Could not Load Driver"
         BREAK
         }
-  }
-  
-$StartMs = (Get-Date)
+
 $scriptid = $null
 $logentry=-join("CREATE (cle:Cypherlogentry {date:timestamp()}) SET cle.source='",$env:COMPUTERNAME,"',cle.script='",$cypherscript.replace('\','\\'),"',cle.section='BEGIN SCRIPT' RETURN id(cle) as scriptid")
 CypherLog $logentry
 $logentry=-join("MATCH (x) WHERE ID(x)=",$global:scriptid," set x.executionid=",$global:scriptid)
 CypherLog $logentry
-
+  }# if logging was enabled
+  $StartMs = (Get-Date)
 
   $queryfailures=0
   $queryexceptions=0
@@ -262,7 +258,7 @@ catch {
     # Create a [:PART_OF_SCRIPT_EXECUTION] relationship for logentries part of the same script execution.
     $logentry=-join($logentry," WITH * MATCH (x) WHERE ID(x)=",$global:scriptid," MERGE (cle)-[:PART_OF_SCRIPT_EXECUTION]-(x)")
       }
-  Cypherlog $logentry
+      if (![string]::IsNullOrEmpty($logging)) {Cypherlog $logentry}
 
   } # End $transaction Loop
   $EndMs = (Get-Date)
@@ -271,6 +267,7 @@ catch {
   write-host "$queryfailures Query Failures"
   write-host "$queryexceptions Queries with exceptions"
   Write-Host "Script execution time: $totaltime"
+  if (![string]::IsNullOrEmpty($logging)) {
   $logentry=-join("CREATE (cle:Cypherlogentry {date:timestamp()}) SET cle.executionid=",$global:scriptid," ,cle.source='",$env:COMPUTERNAME,"',cle.script='",$cypherscript.replace('\','\\'),"',cle.section='END SCRIPT',cle.ResultAvailableAfter='",$totaltime,"',cle.transactions=",$cypherarray.GetUpperBound(0))
   if (![string]::IsNullOrEmpty($scriptid)){
     $logentry=-join($logentry," WITH * MATCH (x) WHERE ID(x)=",$global:scriptid," MERGE (cle)-[:PART_OF_SCRIPT_EXECUTION]-(x)")
@@ -285,7 +282,7 @@ catch {
   Write-Host "MATCH (cle:Cypherlogentry {executionid:$global:scriptid}) return cle"
   Write-Host "`nTo view a graph of the logs for this script where labels, properties, or relationships were modified:"
   Write-Host "MATCH (cle:Cypherlogentry {executionid:$global:scriptid}) WHERE (cle.LabelsAdded>0 or cle.PropertiesSet>0 or cle.NodesDeleted>0 or cle.LabelsRemoved>0 or cle.RelationshipsCreated>0 or cle.RelationshipsDeleted>0 or cle.section contains 'SCRIPT') return cle"
-
+    }
 
   #Clean-up
   $session = $null
