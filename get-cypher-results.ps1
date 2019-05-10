@@ -62,20 +62,22 @@ param (
 [string]$logging
 )
 
-$global:scriptname = $($MyInvocation.MyCommand.Name)
+$global:srccmdline = $($MyInvocation.MyCommand.Name)
 
-Write-Host "`nLoading includes: $pwd\bg-sharedfunctions.ps1"
-Try{. "$pwd\bg-sharedfunctions.ps1" | Out-Null}
+Write-Host "I live in $PSScriptRoot"
+#Write-Host "`nLoading includes: $pwd\bg-sharedfunctions.ps1"
+Write-Host "`nLoading includes: $PSScriptRoot\bg-sharedfunctions.ps1"
+Try{. "$PSScriptRoot\bg-sharedfunctions.ps1" | Out-Null}
 Catch{
-    Write-Warning "I wasn't able to load the sharedfunctions includes.  We are going to bail now, sorry 'bout that! "
-    Write-Host "Try running them manually, and see what error message is causing this to puke: .\bg-sharedfunctions.ps1"
+    Write-Warning "I wasn't able to load the sharedfunctions includes (which should live in the same direcroty as get-cypher-results.ps1). `nWe are going to bail now, sorry 'bout that!"
+    Write-Host "Try running them manually, and see what error message is causing this to puke: $PSScriptRoot\bg-sharedfunctions.ps1"
     BREAK
     }
 
  Prepare-EventLog
  
  if(![System.IO.File]::Exists($cypherscript)){
-    Write-Host "Was unable to access the cypher script '$cypherscript'"
+    Write-Host "Was unable to access the cypher script '$cypherscript'" -ForegroundColor Yellow
     BREAK
 }
  $cyphercontent = [IO.File]::ReadAllText($cypherscript)
@@ -127,6 +129,8 @@ Catch{
         BREAK
         }
 
+Write-host "Executing Script: "$cypherscript -ForegroundColor Green
+
 $scriptid = $null
 $logentry=-join("CREATE (cle:Cypherlogentry {date:timestamp()}) SET cle.source='",$env:COMPUTERNAME,"',cle.script='",$cypherscript.replace('\','\\'),"',cle.section='BEGIN SCRIPT' RETURN id(cle) as scriptid")
 CypherLog $logentry
@@ -145,6 +149,11 @@ CypherLog $logentry
   $cypherarray=$($cyphercontent -split ";\s*\r?\n")
   $cypherarray = $cypherarray | Where-Object{![string]::IsNullOrEmpty($_.trim())}
  
+  if($cypherarray -isnot [system.array])
+  {Write-Host "Source cypher contains only one transaction"
+  $cypherarray = @($cyphercontent)
+}
+
   # Now take the script, and split it into lines, so we can find the line number for each section start.
   # The logging will show the line number for the start of each transaction to assist in debugging
   $global:arrln=@($cyphercontent -split '\r?\n' | Select-String -Pattern '^(?!//).+;\s*$' | Select-Object -ExpandProperty 'LineNumber')
@@ -182,7 +191,7 @@ if ($vt -eq 0) {write-host "`nTransaction in section ["$sectiontitle"] contains 
 continue
 }
 
-    Write-Host -NoNewLine "`rExecuting transaction "(($global:txcounter)+1)"/"($cypherarray.GetUpperBound(0)+1)
+    Write-Host -NoNewLine "`rExecuting transaction "(($global:txcounter)+1)"/"($cypherarray.GetUpperBound(0)+1) -ForegroundColor Green
     $result = $session.Run($securetransaction)
    
   }#End Try
@@ -245,16 +254,13 @@ catch {
   }# End ForEach-Object $result.PSObject.Properties
   #If we have error messages, cleanup the text in the string (remove invalid characters) so we don't honk-up our logentry syntax
   if (![string]::IsNullOrEmpty($errormsg)) {
-
-    $errtxt=$($errormsg -replace '[^a-zA-Z0-9" _,/.:)(=\\\%-]', '')
-    $ms1=$($MyInvocation.MyCommand.Definition)
-    $matchstring = -join("*At ",$ms1,"*")
-#    $matchstring = $matchstring.replace('\','\\')
-    write-host "Matchstring: "$matchstring
-    if ($errtxt -like $matchstring) {
+      $errtxt=$($errormsg -replace '[^a-zA-Z0-9" _,/.:)(=\\\%-]', '')
+      $ms1=$($MyInvocation.MyCommand.Definition)
+      $matchstring = -join("*At ",$ms1,"*")
+          if ($errtxt -like $matchstring) {
         $errtxt =  $($errtxt -split 'At ')[0]
     }
-  }
+    $errtxt = $errtxt.replace('\','\\')
       write-host "[Error text start]"$errtxt"[Error text stop]" -ForegroundColor Yellow
     $logentry=-join($logentry,"cle.error='",$errtxt,"',")
     write-host "`nLogging error: `n$logentry `n For Transaction:$securetransaction`n" -ForegroundColor Yellow

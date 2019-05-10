@@ -18,10 +18,13 @@
 
 # Prepare to allow events written to the Windows EventLog.  Create the Eventlog SOURCE if it is missing.
 Function Prepare-EventLog{
-    $scriptname=$($MyInvocation.MyCommand.Name)
-    $logFileExists = Get-EventLog -list | Where-Object {$_.logdisplayname -eq $scriptname} 
+    #$srccmdline=$($MyInvocation.MyCommand.Name)
+
+    Write-Host "My source is $srccmdline"
+
+    $logFileExists = Get-EventLog -list | Where-Object {$_.logdisplayname -eq $srccmdline} 
     if (! $logFileExists) {
-        New-EventLog -LogName Application -Source $scriptname -erroraction 'silentlycontinue'}
+        New-EventLog -LogName Application -Source $srccmdline -erroraction 'silentlycontinue'}
     }
 
 Function sendto-eventlog {
@@ -33,8 +36,9 @@ Function sendto-eventlog {
 		  [String]$EntryType
 		  )
   process {
+Write-Host "Write-EventLog -LogName Application -Source $srccmdline -EntryType $EntryType -EventId 5980 -Message $Message"
     
-  Write-EventLog -LogName Application -Source $scriptname -EntryType $EntryType -EventId 5980 -Message $Message
+  Write-EventLog -LogName Application -Source $srccmdline -EntryType $EntryType -EventId 5980 -Message $Message
   }
   }
 
@@ -101,24 +105,17 @@ function AmINull([String]$x) {
             }
             }
 
-function Test-RegistryValue {
-    param (
-    [parameter(Mandatory=$true)]
-    [ValidateNotNullOrEmpty()]$Path,
-
-    [parameter(Mandatory=$true)]
-    [ValidateNotNullOrEmpty()]$Value
-    )
-
+function Test-RegistryValue([String]$TestPath,[String]$TestValue){
     try {
-    Get-ItemProperty -Path $Path | Select-Object -ExpandProperty $Value -ErrorAction Stop | Out-Null
+    #Get-ItemProperty -Path $TestPath | Select-Object -ExpandProperty $TestValue -ErrorAction Stop | Out-Null
+    Get-ItemProperty -Path $TestPath -Name $TestValue -ErrorAction Stop | Out-Null
         return $true
         }
     catch {
     return $false
     }
     }#End Function (Test-RegistryValue)
-# With the supplied registry path and value name, retrieve the hashed value, and convert to clear text (for use with URL or API call)
+# With the supplied registry path and value name, retrieve the secured value, and convert to clear text (for use with URL or API call)
 Function Get-SecurePassword([String]$pwpath,[String]$RegValName){
     Try{
     $hashedpw = Ver-RegistryValue -RegPath $pwpath -Name $RegValName -DefValue $null
@@ -167,6 +164,52 @@ Function Get-FileName($initialDirectory)
     $OpenFileDialog.ShowDialog() | Out-Null
     $OpenFileDialog.filename
 }
+
+function New-TemporaryDirectory {
+    $parent = [System.IO.Path]::GetTempPath()
+    [string] $name = [System.Guid]::NewGuid()
+    New-Item -ItemType Directory -Path (Join-Path $parent $name)
+}
+function GetAPIKEY{
+    if (Test-RegistryValue $($Path+$tenantdomain) "APIKey"){
+    $APIKey = Get-SecurePassword $($Path+$tenantdomain) "APIKey"
+    }
+    
+    # No Key, so we need to prompt for input
+    if ([string]::IsNullOrEmpty($APIKey))  {
+    Write-Host "Requesting user to supply APIKey"
+    #$password= Read-Host -assecurestring "Enter GUID for $tenantdomain"
+    $password=$Host.ui.PromptForCredential("","Enter GUID for $tenantdomain","APIKey","")
+    if ([string]::IsNullOrEmpty($password.password)) {
+    Write-Host "No APIKey provided or dialog cancelled.   Exiting script..."
+    BREAK
+    }
+    $SecureString = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($password.password))
+$secure = ConvertTo-SecureString $SecureString -force -asPlainText 
+$bytes = ConvertFrom-SecureString $secure
+Ver-RegistryValue -RegPath $($Path+$tenantdomain) -Name "APIKey" -DefValue $bytes | Out-Null
+Remove-Variable bytes
+Remove-Variable password
+Remove-Variable secure
+Remove-Variable securestring
+# Now the reg value is NOT empty
+}
+
+Try
+{
+$APIKey = Get-SecurePassword $($Path+$tenantdomain) "APIKey"
+}
+Catch
+{
+$ErrorMessage = $_.Exception.Message
+    $FailedItem = $_.Exception.ItemName
+    Write-Host "Retrieve GUID from registry Failed! We failed to read GUID from $($Path+$tenantdomain). The error message was '$ErrorMessage'  It is likely that you are not running this script as the original user who saved the secure tenant GUID."
+    Break
+}
+return $APIKey
+# End of Function
+}
+
 Function Loadn4jdriver {
     Add-Type -AssemblyName Microsoft.VisualBasic
     $ValName = "N4jDriverpath"
