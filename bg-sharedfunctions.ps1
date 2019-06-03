@@ -190,7 +190,7 @@ process{
         write-host "about to get-cred... $PWUIDialog" 
         #$cred = Get-Credential -Credential $defval -Message $($PWUIDialog) -Title $("$CredName credential request")
         $cred = $host.ui.PromptForCredential("$CredName credential request", $PWUIDialog, $defval,"")
-        $justuser=$cred.username
+        #$justuser=$cred.username
         $password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($cred.password))
         if (AmINull $($password.trim()) -eq $true) {
         Write-Host "$CredName user password cannot be blank."
@@ -199,7 +199,7 @@ process{
         } # End if $intsetacct -ne -1
     if ($intsetacct -ne -1){
         # -1 means we already validated the registry contains the user/password, and the user doesn't want to change them
-        Set-ItemProperty -Path $path -Name $UserValName	-Value $credUser -Force #| Out-Null
+        Set-ItemProperty -Path $path -Name $UserValName	-Value $cred.username -Force #| Out-Null
         $secure = ConvertTo-SecureString $password -force -asPlainText 
         $bytes = ConvertFrom-SecureString $secure
         Set-ItemProperty -Path $path -Name $PWValName -Value $bytes -Force #| Out-Null
