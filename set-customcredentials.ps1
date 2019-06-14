@@ -27,10 +27,18 @@
 └─────────────────────────────────────────────────────────────────────────────────────────────┘ 
  
 #> 
-$global:scriptname = $($MyInvocation.MyCommand.Name)
 
-Write-Host "`nLoading $pwd\bg-sharedfunctions.ps1"
-Try{. "$pwd\bg-sharedfunctions.ps1" | Out-Null}
+param (
+[string]$credname,
+[string]$findstring,
+[string]$creds
+)
+
+$global:scriptname = $($MyInvocation.MyCommand.Name)
+$global:srccmdline = $($MyInvocation.MyCommand.Name)
+
+Write-Host "`nLoading $psscriptroot\bg-sharedfunctions.ps1"
+Try{. "$psscriptroot\bg-sharedfunctions.ps1" | Out-Null}
 Catch{
     Write-Warning "I wasn't able to load the sharedfunctions includes.  We are going to bail now, sorry 'bout that! "
     Write-Host "Try running them manually, and see what error message is causing this to puke: .\bg-sharedfunctions.ps1"
@@ -46,6 +54,8 @@ Write-Host "`nIf this config has been run before (by this user, on this PC), suc
 Write-Host "HKEY_CURRENT_USER\Software\neo4j-wrapper\Credentials"
 Write-Host "`nThe wizard will use those values, and give you a chance to modify them if you need."
 
+# If the credential name is NOT supplied on the commandline then we must ask
+if ([string]::IsNullOrEmpty($credname)) {
 $ValName = "LastCredName"	
 $Path = "HKCU:\Software\neo4j-wrapper\Credentials"
 AddRegPath $Path
@@ -54,21 +64,25 @@ if (AmINull $($CredNameDef.Trim()) -eq $true ){$CredNameDef="Mycredential"}
 Write-Host ""
 Write-Host "We need a logical name for this Credential."
 $CredName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter name for this Credential.', 'Credential Name', $($CredNameDef))
+} 
 $CredName=$CredName.Trim()
 if (AmINull $($CredName) -eq $true){
 write-host "No Datasource name provided.   Exiting setup..."
 BREAK
 }
 
+#if (![string]::IsNullOrEmpty($findstring)) {$defvalue=$findstring} else {$defvalue='this-is-a-unique-string-to-find-within-the-cypher-code'}
+if ([string]::IsNullOrEmpty($findstring)) {$defvalue='this-is-a-unique-string-to-find-within-the-cypher-code'
 $ValName = "Matchstring"	
 $Path = "HKCU:\Software\neo4j-wrapper\Credentials\$CredName"
 AddRegPath $Path
-$CredMatchStringDef = Ver-RegistryValue -RegPath $Path -Name $ValName -DefValue "this-is-a-unique-string-tp-find-within-the-cypher-code"
-if (AmINull $($CredMatchStringDef.Trim()) -eq $true ){$CredMatchStringDef="this-is-a-unique-string-tp-find-within-the-cypher-code"}
+$CredMatchStringDef = Ver-RegistryValue -RegPath $Path -Name $ValName -DefValue $defvalue
+if (AmINull $($CredMatchStringDef.Trim()) -eq $true ){$CredMatchStringDef=$defvalue}
 Write-Host ""
 Write-Host "Provide a unique string to find within your cypher script which will be replaced with the contents of a secure string value."
 $CredMatchString = [Microsoft.VisualBasic.Interaction]::InputBox('Unique string to find within your cypher script which will be replaced with a secure value', 'String to match', $($CredMatchStringDef))
 $CredMatchString=$CredMatchString.Trim()
+} else {$CredMatchString=$findstring.Trim()}
 if (AmINull $($CredMatchString) -eq $true){
 write-host "Null match string provided or Dialog cancelled.  No changes will be written for this key/value pair.  Exiting script..."
 BREAK

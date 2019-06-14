@@ -59,7 +59,8 @@ param (
 [string]$creds2,
 [string]$creds3,
 [string]$creds4,
-[string]$logging
+[string]$logging,
+[object]$content
 )
 
 $global:srccmdline = $($MyInvocation.MyCommand.Name)

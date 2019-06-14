@@ -105,10 +105,11 @@ function AmINull([String]$x) {
             if (![string]::IsNullOrEmpty($DefValue)) {
             New-Item $RegPath -Force | New-ItemProperty -Name $Name -Value $DefValue -Force | Out-Null
             return $DefValue
-            }}
-            
             }
-            }
+        }# End If Test-Path
+        return $false 
+    } # End Process
+    }# End Function
 
 function Test-RegistryValue([String]$TestPath,[String]$TestValue){
     try {
