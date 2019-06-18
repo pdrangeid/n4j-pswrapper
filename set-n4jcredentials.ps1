@@ -30,7 +30,7 @@
  
 #> 
 $scriptname=$($MyInvocation.MyCommand.Name)
-New-EventLog -LogName Application -Source $scriptname -erroraction 'silentlycontinue'
+New-EventLog -LogName Application -Source "$scriptname" -erroraction 'silentlycontinue'
 
 function AmINull([String]$x) {
   if ($x) {return $false} else {return $true}
@@ -45,7 +45,7 @@ Function sendto-eventlog {
 		[String]$EntryType
 		)
 process {
-Write-EventLog -LogName Application -Source $scriptname -EntryType $EntryType -EventId 5980 -Message $Message
+Write-EventLog -LogName Application -Source "$scriptname" -EntryType $EntryType -EventId 5980 -Message $Message
 }
 }
 
@@ -170,10 +170,12 @@ Write-Host "`nThe wizard will use those values, and give you a chance to modify 
 Write-Host "`nFirst we need to verify that we can load the Neo4j dotnet driver..."
 $ValName = "N4jDriverpath"
 $Path = "HKCU:\Software\neo4j-wrapper\Datasource"
-#$Dllpathdef = Ver-RegistryValue -RegPath $Path -Name $ValName -DefValue "C:\Program Files\2Neo4j.Driver.1.7.0\lib\netstandard1.3\Neo4j.Driver.dll"
-$Dllpathdef = Ver-RegistryValue -RegPath $Path -Name $ValName -DefValue "C:\temp\"
-$Neo4jdriver = Get-FileName $Dllpathdef
-write-host "The driver will be tested here: $Neo4jdriver"
+$Dllpathdef = Ver-RegistryValue -RegPath $Path -Name $ValName -DefValue "C:\Program Files\Neo4jTools\Neo4j.Driver.1.7.2\lib\net452\Neo4j.Driver.dll"
+if([System.IO.File]::Exists($Dllpathdef)){	$Neo4jdriver =$Dllpathdef }
+if(![System.IO.File]::Exists($Dllpathdef)){
+	# file with path $path doesn't exist
+	$Neo4jdriver = Get-FileName $Dllpathdef
+}
 if (AmINull $($Neo4jdriver) -eq $true){
 	write-host "No Path for Neo4j Driver provided.   Exiting setup...`nFor help loading the neo4j dotnet drivers please visit: https://glennsarti.github.io/blog/using-neo4j-dotnet-client-in-ps/"
 	BREAK
@@ -208,8 +210,8 @@ BREAK
 $ValName = "ServerURL"	
 $Path = "HKCU:\Software\neo4j-wrapper\Datasource\$DSName"
 AddRegPath $Path
-$Neo4jServerNamedef = Ver-RegistryValue -RegPath $Path -Name $ValName -DefValue "bolt://neo4j.mydomain.com:7687"
-if (AmINull $($Neo4jServerNamedef.Trim()) -eq $true ){$Neo4jServerNamedef="bolt://neo4j.mydomain.com:7687"}
+$Neo4jServerNamedef = Ver-RegistryValue -RegPath $Path -Name $ValName -DefValue "bolt://localhost:7687"
+if (AmINull $($Neo4jServerNamedef.Trim()) -eq $true ){$Neo4jServerNamedef="bolt://localhost:7687"}
 Write-Host ""
 Write-Host "Define your Neo4j graphDB. "
 $Neo4jServerName = [Microsoft.VisualBasic.Interaction]::InputBox('Enter fully qualified name (or IP address) of Neo4j Server that will host the graphDB.', 'Neo4j Server URL', $($Neo4jServerNamedef))
