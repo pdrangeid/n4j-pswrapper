@@ -17,7 +17,7 @@
 #> 
 
 # Prepare to allow events written to the Windows EventLog.  Create the Eventlog SOURCE if it is missing.
-Function Prepare-EventLog{
+Function Initialize-EventLog{
     #$srccmdline=$($MyInvocation.MyCommand.Name)
 
     Write-Host "My source is $srccmdline"
@@ -27,7 +27,7 @@ Function Prepare-EventLog{
         New-EventLog -LogName Application -Source $srccmdline -erroraction 'silentlycontinue'}
     }
 
-Function sendto-eventlog {
+Function update-eventlog {
 	  param(
 		  [Parameter(Position = 0, Mandatory = $true)]
 		  [String]$Message
@@ -51,11 +51,11 @@ Function LogError($e,[String]$mymsg,[String]$section){
     $warningmessage=$($section)+" - "+$($mymsg)+" - "+$($msg)
     if ($warningmessage -like "*Failed to connect to server*") {
         Write-Warning "Failed to connect to Neo4j server.  Aborting..."
-        sendto-eventlog -message $warningmessage -entrytype "Error"
+        update-eventlog -message $warningmessage -entrytype "Error"
         BREAK
     }
     Write-Warning $warningmessage
-    sendto-eventlog -message $warningmessage -entrytype "Error"
+    update-eventlog -message $warningmessage -entrytype "Error"
     #BREAK
     }
 function Cypherlog([String]$x){
@@ -88,26 +88,32 @@ function AmINull([String]$x) {
             ,
             [Parameter(Position = 2, Mandatory = $false)]
             [String]$DefValue
+            ,
+            [Parameter(Position = 3, Mandatory = $false)]
+            [String]$RegValType
         ) 
-        
      process {
+        if (![string]::IsNullOrEmpty($RegValType) -or !$RegValType){$RegValType="String"}
      if (Test-Path $RegPath) {
                 $Key = Get-Item -LiteralPath $RegPath
-                if ($Key.GetValue($Name, $null) -ne $null) {
+                if ($null -ne $Key.GetValue($Name, $null)) {
+                    Show-onscreen "(Get-ItemProperty -Path Get-ItemProperty -Path $regpath -Name $Name).$Name" 5
                     return (Get-ItemProperty -Path $regpath -Name $Name).$Name 			
                     } else
                     {
                     if (![string]::IsNullOrEmpty($DefValue)) {
-                    New-ItemProperty -Path $RegPath -Name $Name -Value $DefValue -Force | Out-Null
+                        Show-onscreen "(New-ItemProperty -Path $RegPath -Name $Name -Value $DefValue -Type $ValType" 5
+                    New-ItemProperty -Path $RegPath -Name $Name -Value $DefValue -PropertyType $RegValType -Force | Out-Null
                     return $DefValue
                     } }
             } else {
             if (![string]::IsNullOrEmpty($DefValue)) {
-            New-Item $RegPath -Force | New-ItemProperty -Name $Name -Value $DefValue -Force | Out-Null
+            Show-onscreen "(New-Item $RegPath then:New-ItemProperty -Name $Name -Value $DefValue -Type $ValType -Force " 5
+            New-Item $RegPath -Force | New-ItemProperty -Name $Name -Value $DefValue -PropertyType $RegValType -Force | Out-Null
             return $DefValue
             }
         }# End If Test-Path
-        return $false 
+        return $null 
     } # End Process
     }# End Function
 
@@ -130,7 +136,7 @@ Function Get-SecurePassword([String]$pwpath,[String]$RegValName){
     $UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
     }
     Catch{
-    LogError $_.Exception "Sorry, unable to retrieve password.  Password retrieval requires execution as the same user as when password was stored." "Get-SecurePassword"
+    LogError $_.Exception "Sorry, unable to retrieve password from value $RegValName via $pwpath.  Password retrieval requires execution as the same user as when password was stored." "Get-SecurePassword"
     BREAK
     }
     Return $UnsecurePassword
@@ -183,11 +189,14 @@ process{
     } # End if (username AND password stored in registry)
     write-host "intsetacct is $intsetacct"
     if ($intsetacct -eq -1){
-        $credUser = Ver-RegistryValue -RegPath $Path -Name $UserValName -DefValue $defval
-        $credPW = Get-SecurePassword $RegPath $PWValName 
+        #$credUser = Ver-RegistryValue -RegPath $Path -Name $UserValName -DefValue $defval
+        #$credPW = Get-SecurePassword $RegPath $PWValName 
+        Ver-RegistryValue -RegPath $Path -Name $UserValName -DefValue $defval
+        Get-SecurePassword $RegPath $PWValName 
         }
     if ($intsetacct -ne -1){
-        $credUser = Ver-RegistryValue -RegPath $RegPath -Name $UserValName -DefValue $defval
+        #$credUser = Ver-RegistryValue -RegPath $RegPath -Name $UserValName -DefValue $defval
+        Ver-RegistryValue -RegPath $RegPath -Name $UserValName -DefValue $defval
         write-host "about to get-cred... $PWUIDialog" 
         #$cred = Get-Credential -Credential $defval -Message $($PWUIDialog) -Title $("$CredName credential request")
         $cred = $host.ui.PromptForCredential("$CredName credential request", $PWUIDialog, $defval,"")
@@ -223,10 +232,17 @@ Function AddRegPath([String]$regpath){
     }
     }
 
+    Function Show-onscreen([String]$themessage,[int]$verblevel) {
+        #write-host "this message req verbosity of $verblevel"
+    if ($verbosity -ge $verblevel) {
+        Write-Host $themessage
+    }
+    } #End function Sendto-screen
 Function YesorNo([String]$thequestion,[String]$thetitle) {
-    $a = new-object -comobject wscript.shell
-    $intAnswer = $a.popup($thequestion, `
-    0,$thetitle,4)
+    Add-Type -AssemblyName System.Windows.Forms
+    #$a = new-object -comobject wscript.shell
+    #$intAnswer = $a.popup($thequestion,0,$thetitle,4)
+    $intAnswer = [System.Windows.Forms.MessageBox]::Show($thequestion, $thetitle, 'YesNo', 'Warning')
     If ($intAnswer -eq 6) {
         return $true
     } else {
@@ -251,22 +267,28 @@ function New-TemporaryDirectory {
 }
 
 function GetKEY([String]$pwpath,[String]$RegValName,[String]$UIPrompt){
-    if (Test-RegistryValue $($pwpath) $RegValName){
+    if (Test-RegistryValue $pwpath $RegValName){
+    Show-onscreen "$pwpath $RegValName is valid, so requesting SecurePassword Retrieval" 4
     $GUID = Get-SecurePassword $($pwpath) $RegValName
     }
         
     # No Key, so we need to prompt for input
     if ([string]::IsNullOrEmpty($GUID))  {
-    Write-Host "Requesting user to supply $RegValName `n $UIPrompt"
+    Show-onscreen "Requesting user to supply $RegValName `n $UIPrompt" 2
     $password=$Host.ui.PromptForCredential("UID Key Request",$UIPrompt,$RegValName,"")
     if ([string]::IsNullOrEmpty($password.password)) {
     Write-Host "No $RegValName provided or dialog cancelled.   Exiting script..."
     BREAK
     }
     $SecureString = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($password.password))
-$secure = ConvertTo-SecureString $SecureString -force -asPlainText 
+write-host "Got securestring of $securestring"
+    $secure = ConvertTo-SecureString $SecureString -force -asPlainText 
+write-host "Got secure of $secure"
 $bytes = ConvertFrom-SecureString $secure
+write-host "Got bytes of $bytes"
+write-host "Add to path:$($Path+$tenantdomain) -Name $RegValName -DefValue 'thebytes' registry"
 Ver-RegistryValue -RegPath $($Path+$tenantdomain) -Name $RegValName -DefValue $bytes | Out-Null
+
 Remove-Variable bytes
 Remove-Variable password
 Remove-Variable secure
@@ -281,7 +303,7 @@ $GUID = Get-SecurePassword $($pwpath) $RegValName
 Catch
 {
 $ErrorMessage = $_.Exception.Message
-    $FailedItem = $_.Exception.ItemName
+    #$FailedItem = $_.Exception.ItemName
     Write-Host "Retrieve key from registry Failed! We failed to read key from $($pwpath). The error message was '$ErrorMessage'  It is likely that you are not running this script as the original user who saved the secure key value."
     Break
 }
