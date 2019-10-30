@@ -25,8 +25,8 @@
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐ 
 │ get-cypher-results.ps1                                                                      │ 
 ├─────────────────────────────────────────────────────────────────────────────────────────────┤ 
-│   DATE        : 1.28.2019                              									  │ 
-│   AUTHOR      : Paul Drangeid 	                           								  │ 
+│   DATE        : 10.30.2019                             	                  								  │ 
+│   AUTHOR      : Paul Drangeid 	                                          								  │ 
 │   SITE        : https://blog.graphcommit.com/                                               │ 
 └─────────────────────────────────────────────────────────────────────────────────────────────┘ 
  
@@ -36,9 +36,13 @@ Name of the Datasource key to lookup.  Stored in the registry under HKEY_CURRENT
 .PARAMETER cypherscript 
 Name of the file containing the .cypher code to be executed.
 
-.PARAMETER cred1 (2,3,4)
+.PARAMETER creds1(2,3,4)
 Name of credentials to replace within the cypher script. Stored in the registry under HKEY_CURRENT_USER\Software\neo4j-wrapper\Credentials\$cred#
 within the specified registry key, a key/value pair are stored with which to find/replace values within the cypher code
+
+.PARAMETER findrep
+Key/Value pair to replace within the cypher script. Often used to inject a dynamically determined token or sessionid value into your cypher code
+The key/value pair should be supplied as a json string to allow proper parsing.  ie: -fndrep1 {"findthisstring":"replacewiththisone","anotherstring":"anotherreplacement"}
 
 .PARAMETER logging
 Name of the Datasource to store cypher transaction logging.  The logging will collect info about the results from your CYPHER transactions, and time to run them.
@@ -46,6 +50,12 @@ For best results use the following headers in your cypher code to designate uniq
 // Section [name or description of code that follows this tag]
 This way you can track runtimes and counts of results to verify your code is running as expected using the logging.  
 Log entries will be stored in nodes with :Cypherlogentry as a Label
+
+.PARAMETER verbosity
+How much output to the stdout should occur durring execution?
+
+.PARAMETER returnobj
+Enable this switch if you want the CYPHER results to be returned as a powershell object.  Otherwise only metadata about the execution results is returned
 
 .EXAMPLE 
 get-cypher-results.ps1 -Datasource 'MyN4JDatasource' -cypherscript 'c:\scripts\mycypher.cypher' -creds1 'webappxyz' -creds2 'anotherapp' -logging 'MyN4JDatasource'
@@ -59,23 +69,26 @@ param (
 [string]$creds2,
 [string]$creds3,
 [string]$creds4,
+[string]$findrep,
 [string]$logging,
-[object]$content
+[switch]$returnobj,
+[int]$verbosity,
 )
 
 $global:srccmdline = $($MyInvocation.MyCommand.Name)
 
-Write-Host "I live in $PSScriptRoot"
-#Write-Host "`nLoading includes: $pwd\bg-sharedfunctions.ps1"
-Write-Host "`nLoading includes: $PSScriptRoot\bg-sharedfunctions.ps1"
+if ($true -eq $returnobj){[int]$verbosity=0} #verbosity level is 0 if $returnobj switch is enabled
+if ($null -eq $verbosity){[int]$verbosity=1} #verbosity level is 1 by default
+
+
 Try{. "$PSScriptRoot\bg-sharedfunctions.ps1" | Out-Null}
 Catch{
-    Write-Warning "I wasn't able to load the sharedfunctions includes (which should live in the same direcroty as get-cypher-results.ps1). `nWe are going to bail now, sorry 'bout that!"
+    Write-Warning "I wasn't able to load the sharedfunctions includes (which should live in the same directory as get-cypher-results.ps1). `nWe are going to bail now, sorry 'bout that!"
     Write-Host "Try running them manually, and see what error message is causing this to puke: $PSScriptRoot\bg-sharedfunctions.ps1"
     BREAK
     }
 
- Prepare-EventLog
+# Prepare-EventLog
  
  if(![System.IO.File]::Exists($cypherscript)){
     Write-Host "Was unable to access the cypher script '$cypherscript'" -ForegroundColor Yellow
@@ -89,9 +102,9 @@ Catch{
  $n4juPW = Get-SecurePassword $Path "DSPW" 
 
  Loadn4jdriver
-
+ 
   Try {
-  write-host "Connecting to Neo4j target server: " $($Neo4jServerName) "..."
+  show-onscreen $("Connecting to Neo4j target server:$Neo4jServerName...") 2
   $authToken = [Neo4j.Driver.V1.AuthTokens]::Basic($n4jUser,$n4juPW)
   $dbDriver = [Neo4j.Driver.V1.GraphDatabase]::Driver($Neo4jServerName,$authToken)
   $session = $dbDriver.Session()
@@ -101,12 +114,21 @@ Catch{
   BREAK
   }
   
+  # Collect any supplied -findrep# and store them in a hashtable so we can use find/replace on the transactions to replace placeholders with supplied value
+  $Findandreplace=@{}
+  $findrepjson=($findrep | ConvertFrom-Json)
+foreach ($info in $findrepjson.PSObject.Properties) {
+    #$info.Name
+    #$info.Value
+    $Findandreplace.Add($info.Name,$info.Value)
+}
+
   # Collect any supplied -creds# and store them in a hashtable so we can use find/replace on the transactions to replace placeholders with actual
   # credential information
   $Securecredentials=@{}
     for ($i=1; $i -le 4; $i++){
       $creds=$(Get-Variable -Name "creds$i" -ValueOnly)
-  if (![string]::IsNullOrEmpty($creds)) {
+  if (![string]::IsNullOrEmpty($creds) -and $creds -ne $true -and $creds -ne $false) {
   $Path = "HKCU:\Software\neo4j-wrapper\Credentials\$creds"
   $Matchstring = Ver-RegistryValue -RegPath $Path -Name "Matchstring"
   $SecureString = Get-SecurePassword $Path "SecureStringValue"
@@ -130,7 +152,7 @@ Catch{
         BREAK
         }
 
-Write-host "Executing Script: "$cypherscript -ForegroundColor Green
+Show-Onscreen $("Executing Script: $cypherscript") 2
 
 $scriptid = $null
 $logentry=-join("CREATE (cle:Cypherlogentry {date:timestamp()}) SET cle.source='",$env:COMPUTERNAME,"',cle.script='",$cypherscript.replace('\','\\'),"',cle.section='BEGIN SCRIPT' RETURN id(cle) as scriptid")
@@ -139,19 +161,16 @@ $logentry=-join("MATCH (x) WHERE ID(x)=",$global:scriptid," set x.executionid=",
 CypherLog $logentry
   }# if logging was enabled
   $StartMs = (Get-Date)
-
   $queryfailures=0
   $queryexceptions=0
-  #$cypherarray=$cyphercontent.split(';')
   # segment the .cypher into transactions.  A transaction is a semicolon ';' followed by any number of spaces, followed by a NEWLINE (or carriage return)
   # If you have comment sections that contain a semicolon, be sure it is NOT the last character before a NEWLINE or it will
   # be treated as a transaction delimiter (welcome to suggestions on how to better detect this)
-  #$cypherarray=$($cyphercontent -split ";\r?\n")
   $cypherarray=$($cyphercontent -split ";\s*\r?\n")
   $cypherarray = $cypherarray | Where-Object{![string]::IsNullOrEmpty($_.trim())}
  
   if($cypherarray -isnot [system.array])
-  {Write-Host "Source cypher contains only one transaction"
+  {Show-Onscreen "Source cypher contains only one transaction" 1
   $cypherarray = @($cyphercontent)
 }
 
@@ -186,6 +205,10 @@ if ($fst -like '*//section*') {
 # If we supplied -creds on the commandline, then replace the text with the secured value before sending to the neo4j engine
 ForEach($item in $Securecredentials.Keys) {$securetransaction = $securetransaction.replace($($item),$($Securecredentials[$item]))}
 
+# If we supplied -findrep on the commandline, then replace the key with the value before sending to the neo4j engine
+ForEach($item in $Findandreplace.Keys) {$securetransaction = $securetransaction.replace($($item),$($Findandreplace[$item]))}
+
+
 # examine transaction, if it contains ONLY //COMMENT or blank spaces, then don't send it on to the neo4j engine
 $vt=(($securetransaction -split '\r?\n' | Select-String -Pattern '^(?!//).+' | Select-String -Pattern '\S' | Where-Object{$_ -ne $null}).Count)
 if ($vt -eq 0) {write-host "`nTransaction in section ["$sectiontitle"] contains only comments or blank lines - not running transaction "($cypherarray.GetUpperBound(0)+1) -ForegroundColor Yellow
@@ -194,6 +217,9 @@ continue
 
     Write-Host -NoNewLine "`rExecuting transaction "(($global:txcounter)+1)"/"($cypherarray.GetUpperBound(0)+1) -ForegroundColor Green
     $result = $session.Run($securetransaction)
+   
+    if ($true -eq $returnobj){
+      return $result}
    
   }#End Try
   Catch{
