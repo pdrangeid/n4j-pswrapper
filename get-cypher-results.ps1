@@ -72,7 +72,7 @@ param (
 [string]$findrep,
 [string]$logging,
 [switch]$returnobj,
-[int]$verbosity,
+[int]$verbosity
 )
 
 $global:srccmdline = $($MyInvocation.MyCommand.Name)
