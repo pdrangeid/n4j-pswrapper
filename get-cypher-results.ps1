@@ -95,24 +95,70 @@ Catch{
     BREAK
 }
  $cyphercontent = [IO.File]::ReadAllText($cypherscript)
- 
  $Path = "HKCU:\Software\neo4j-wrapper\Datasource\$Datasource"
+ Show-onscreen $("`nValidate credentials for $Datasource from $Path") 2
  $Neo4jServerName = Ver-RegistryValue -RegPath $Path -Name "ServerURL"
- $n4jUser = Ver-RegistryValue -RegPath $Path -Name "DSUser"
- $n4juPW = Get-SecurePassword $Path "DSPW" 
-
- Loadn4jdriver
- 
-  Try {
-  show-onscreen $("Connecting to Neo4j target server:$Neo4jServerName...") 2
-  $authToken = [Neo4j.Driver.V1.AuthTokens]::Basic($n4jUser,$n4juPW)
-  $dbDriver = [Neo4j.Driver.V1.GraphDatabase]::Driver($Neo4jServerName,$authToken)
-  $session = $dbDriver.Session()
-  }
-  Catch{
-	  LogError $_.Exception "Loading Neo4j driver." "Could not Load Driver"
+ if ($false -eq $Neo4jServerName){
+  Write-Warning "Unable to retrieve (Neo4jServerName value) datasource $Datasource"
   BREAK
+}
+ $n4jUser = Ver-RegistryValue -RegPath $Path -Name "DSUser"
+ if ($false -eq $n4jUser){
+  Write-Warning "Unable to retrieve (DSUser value) datasource $Datasource"
+  BREAK
+}
+ $n4juPW = Get-SecurePassword $Path "DSPW" 
+  if ($false -eq $n4juPW){
+    Write-Warning "Unable to retrieve (DSPW value) datasource $Datasource"
+    BREAK
   }
+
+ Try{
+  Loadn4jdriver
+ }
+  
+ Catch{
+   LogError $_.Exception "Loading Neo4j driver.  Could not Load Driver."
+ BREAK
+ }
+ 
+ Try{
+ $ipaddress=($Neo4JServerName -split "/")[2]
+ $queryport=($ipaddress -split ":")[1]
+ $ipaddress=($ipaddress -split ":")[0]
+ $ipaddress=$(Resolve-DnsName -Type A -Name $ipaddress -ErrorAction Stop).IPAddress
+ }
+ Catch{
+   LogError $_.Exception "Failed address lookup for $Neo4jServerName.  Please verify DNS or verify the server is running.`n"
+ }
+ Try{
+ show-onscreen $("Validating port connectivity for $ipaddress on $queryport") 2
+ $result = get-portvalidation $ipaddress $queryport
+ show-onscreen $("Port connectivity results: $result`n") 3
+ if ($result -eq $false){
+   LogError $_.Exception "Failed port validation to $Neo4jServerName.  Please verify address and firewall rules.`n"
+   exit
+ }
+ }
+ Catch{
+   LogError $_.Exception "Failed port validation to $Neo4jServerName.  Please verify address and firewall rules.`n"
+ }
+   Try {
+    $session=$null
+    $authToken=$null
+    $dbDriver=$null
+    show-onscreen $("Connecting to Neo4j target server:$Neo4jServerName") 2
+   $authToken = [Neo4j.Driver.V1.AuthTokens]::Basic($n4jUser,$n4juPW)
+   Show-onscreen $("Authtoken result: $authToken") 3
+   $dbDriver = [Neo4j.Driver.V1.GraphDatabase]::Driver($Neo4jServerName,$authToken)
+   Show-onscreen $("dbDriver result: $dbDriver") 3
+   $session = $dbDriver.Session()
+   Show-onscreen $("session result: $session") 3
+   }
+   Catch{
+     LogError $_.Exception "Failed while connecting to $Neo4jServerName.  Could not establish session.`n"
+   BREAK
+   }
   
   # Collect any supplied -findrep# and store them in a hashtable so we can use find/replace on the transactions to replace placeholders with supplied value
   $Findandreplace=@{}
@@ -179,7 +225,7 @@ CypherLog $logentry
   $global:arrln=@($cyphercontent -split '\r?\n' | Select-String -Pattern '^(?!//).+;\s*$' | Select-Object -ExpandProperty 'LineNumber')
   #write-host $arrln
   $global:txcounter=-1
-
+  $sectiontitle="BEGIN SCRIPT"
   # Loop through each CYPHER transaction for execution and logging (get the line number from the $arrln array)
   foreach ($transaction in $cypherarray){
     $errormsg=""
@@ -210,8 +256,9 @@ ForEach($item in $Findandreplace.Keys) {$securetransaction = $securetransaction.
 
 
 # examine transaction, if it contains ONLY //COMMENT or blank spaces, then don't send it on to the neo4j engine
+$tnum=0
 $vt=(($securetransaction -split '\r?\n' | Select-String -Pattern '^(?!//).+' | Select-String -Pattern '\S' | Where-Object{$_ -ne $null}).Count)
-if ($vt -eq 0) {write-host "`nTransaction in section ["$sectiontitle"] contains only comments or blank lines - not running transaction "($cypherarray.GetUpperBound(0)+1) -ForegroundColor Yellow
+if ($vt -eq 0) {write-host "`nTransaction in section ["$sectiontitle"] contains only comments or blank lines - not running transaction "($txcounter+1)+"/"($cypherarray.GetUpperBound(0)+1) -ForegroundColor Yellow
 continue
 }
 
