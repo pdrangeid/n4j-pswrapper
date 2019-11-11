@@ -258,7 +258,7 @@ ForEach($item in $Findandreplace.Keys) {$securetransaction = $securetransaction.
 # examine transaction, if it contains ONLY //COMMENT or blank spaces, then don't send it on to the neo4j engine
 $tnum=0
 $vt=(($securetransaction -split '\r?\n' | Select-String -Pattern '^(?!//).+' | Select-String -Pattern '\S' | Where-Object{$_ -ne $null}).Count)
-if ($vt -eq 0) {write-host "`nTransaction in section ["$sectiontitle"] contains only comments or blank lines - not running transaction "($txcounter+1)+"/"($cypherarray.GetUpperBound(0)+1) -ForegroundColor Yellow
+if ($vt -eq 0) {write-host "Transaction in section ["$sectiontitle"] contains only comments or blank lines - not running transaction "($txcounter+1)"/"($cypherarray.GetUpperBound(0)+1) -ForegroundColor Yellow
 continue
 }
 
@@ -300,7 +300,9 @@ catch {
         #Write-Host $entry
         
         if ($entry -like '*Counters=Counters{*') {
-           $counters=$($entry) -split ' '
+           #$counters=$($entry) -split ' '
+           $counters0=($($entry) -split 'Counters=')[1]
+           $counters=$($counters0) -split ' '
            #write-Host "we found counters:$counters" -ForegroundColor Red
            foreach ($counter in $counters){
                 if ($counter -like '*=*' -and $counter -notlike '*{*' ){
@@ -311,13 +313,16 @@ catch {
                 $countervalue=$($countervalue -replace '[^a-zA-Z0-9" _,/.:)(=\\\%-]', '')
                 If ($($counter.split('=')[1] -replace '}','').replace(',','').replace(')','') -match "^\d+$"){
                 # The value of this counter is numeric... 
+                Show-onscreen $("`nAdding numeric counter value cle.$countername =  $countervalue") 5
                 $logentry= -join($logentry,"cle.",$countername,"=",$countervalue,",")
                 } else {
+                Show-onscreen $("`nAdding alpha counter value cle.$countername =  $countervalue") 5
                 $logentry= -join($logentry,"cle.",$countername,"='",$countervalue,"',")
                 }# non-numeric value
                 #write-host $("CounterName:$countername   and Value=$countervalue")
              } # If $counter -like '*=*'
                if ($counter -like '*Server=ServerInfo{Add*' ){
+                Show-onscreen $("`nAdding Server value cle.$countername =  $countervalue") 5
                 $logentry=-join($logentry,"cle.server='",$($counter.split('=')[2] -replace ',',''),"',")
                }#If *Server=
            }# foreach counter in counters
@@ -337,7 +342,7 @@ catch {
     $errtxt = $errtxt.replace('\','\\')
       write-host "[Error text start]"$errtxt"[Error text stop]" -ForegroundColor Yellow
     $logentry=-join($logentry,"cle.error='",$errtxt,"',")
-    write-host "`nLogging error: `n$logentry `n For Transaction:$securetransaction`n" -ForegroundColor Yellow
+    write-host "`nLogging error: `n$logentry `n`n For Transaction:$securetransaction`n" -ForegroundColor Yellow
   }
   $logentry=-join($logentry,"cle.section='",$sectiontitle,"'")
   $logentry=$logentry.TrimEnd(",")
