@@ -16,9 +16,7 @@ If(!(test-path $path))
       New-Item -ItemType Directory -Force -Path $path
 }
 
-$client.DownloadFile("https://github.com/pdrangeid/n4j-pswrapper/blob/master/bg-sharedfunctions.ps1","$path\bg-sharedfunctions.ps1")
-$client.DownloadFile("https://github.com/pdrangeid/n4j-pswrapper/blob/master/get-cypher-results.ps1","$path\get-cypher-results.ps1")
+$client.DownloadFile("https://github.com/pdrangeid/graph-commit/blob/master/bg-sharedfunctions.ps1","$path\bg-sharedfunctions.ps1")
+$client.DownloadFile("https://github.com/pdrangeid/graph-commit/blob/master/get-cypher-results.ps1","$path\get-cypher-results.ps1")
 $client.DownloadFile("https://github.com/pdrangeid/n4j-pswrapper/blob/master/set-customcredentials.ps1","$path\set-customcredentials.ps1")
 $client.DownloadFile("https://github.com/pdrangeid/n4j-pswrapper/blob/master/set-n4jcredentials.ps1","$path\set-n4jcredentials.ps1")
-
-

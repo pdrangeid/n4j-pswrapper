@@ -1,4 +1,7 @@
 # n4j-pswrapper
+
+# Historical version.  For an updated methodology, please visit https://github.com/pdrangeid/graph-commit
+
 Powershell scripts to securely store a Neo4j datasource with username &amp; password in the registry for use with other automation (ps) scripts.
 It will also parse the provided .cypher script, and submit each transaction to a Neo4j server for execution, and collect (and optionally log) the metadata results of each transaction
 
